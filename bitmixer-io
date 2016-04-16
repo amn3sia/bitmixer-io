@@ -26,8 +26,10 @@
 
 # You can set this to your personal Bitcode, if you want to
 readonly BITMIXER_CODE="" 
-# Change this to "https://bitmixer.io/" if you want to use the clearnet connection.
-readonly BASE_URL="http://bitmixer2whesjgj.onion/" 
+# Change this to "https://bitmixer.io" if you want to use the clearnet connection.
+readonly BASE_URL="http://bitmixer2whesjgj.onion" 
+# Leave this blank if you don't want to use any proxy
+readonly SOCKS5_PROXY="127.0.0.1:9050"
 
 # don't change after this line
 
@@ -43,6 +45,14 @@ function help() {
 "bitmixer-io - A (bash) Command Line Interface for the site bitmixer.io
 
 Usage: bitmixer-io address1 [address2 address3 ... address 10]"
+}
+
+function curl() {
+	if [ -z "$SOCKS5_PROXY" ]; then
+		/usr/bin/curl $@
+	else
+		/usr/bin/curl --socks5 $SOCKS5_PROXY $@
+	fi
 }
 
 function check_args() {
