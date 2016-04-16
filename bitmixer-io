@@ -1,0 +1,165 @@
+#!/bin/bash
+#
+# MIT License
+# 
+# Copyright (c) 2016 amn3sia
+# 
+# Permission is hereby granted, free of charge, to any person obtaining
+# a copy of this software and associated documentation files (the
+# "Software"), to deal in the Software without restriction, including
+# without limitation the rights to use, copy, modify, merge, publish,
+# distribute, sublicense, and/or sell copies of the Software, and to
+# permit persons to whom the Software is furnished to do so, subject to
+# the following conditions:
+# 
+# The above copyright notice and this permission notice shall be included
+# in all copies or substantial portions of the Software.
+# 
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+# EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+# MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+# IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+# CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+# TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+# SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+
+# You can set this to your personal Bitcode, if you want to
+readonly BITMIXER_CODE="" 
+# Change this to "https://bitmixer.io/" if you want to use the clearnet connection.
+readonly BASE_URL="http://bitmixer2whesjgj.onion/" 
+
+# don't change after this line
+
+readonly RESPONSE_REGEX='addr=([1|3][a-zA-Z0-9]{24,35})&maxamount=([0-9]+(\.[0-9]+)?)&bitcode=(.+)$'
+readonly BITCOIN_ADDR_REGEX='[1|3][a-zA-Z0-9]{24,35}'
+REQ_URL="$BASE_URL/order.php?"
+LETTER_URL="$BASE_URL/lettertxt.php?"
+SERVER_RESPONSE=
+COOKIE_FILE=
+
+function help() {
+	echo \
+"bitmixer-io - A (bash) Command Line Interface for the site bitmixer.io
+
+Usage: bitmixer-io address1 [address2 address3 ... address 10]"
+}
+
+function check_args() {
+	if [ -z "$1" -o $# -gt 10 ]; then
+		help
+		exit 1
+	fi
+	
+	for addr in "$@"; do
+		if ! [[ $addr =~ $BITCOIN_ADDR_REGEX ]]; then
+			echo -e "ERROR: '$addr' is not a valid bitcoin address\n"
+			help
+			exit 1
+		fi
+	done
+}
+
+function get_random_fee() {
+	INT=$(($RANDOM%4))
+	if [ $INT -eq 0 ]; then
+		FLOAT=$((5000+($RANDOM%5000)))
+	elif [ $INT -eq 3 ]; then
+		FLOAT=$(($RANDOM%5000))
+	else
+		FLOAT=$(($RANDOM%10000))
+	fi
+	
+	echo "$INT.$FLOAT"
+}
+
+function generate_req_url() {
+	echo -e "PERCENT\t\tADDRESS\n"
+	PERCENT_LEFT=100
+	for i in `seq 1 $#`; do
+		current_addr=`eval echo "$"$i`
+		if [ $PERCENT_LEFT -ne 0 -a $i -ne $# ]; then
+			percent=$((($RANDOM % $PERCENT_LEFT)+1))
+		else
+			percent=$PERCENT_LEFT
+		fi
+		
+		PERCENT_LEFT=$(($PERCENT_LEFT-$percent))
+		
+		echo -e "$percent%\t\t$current_addr"
+		if [ $percent -ne 0 ]; then
+			REQ_URL+="addr$i=$current_addr&pr$i=$percent&"
+		fi
+		
+	done
+	
+	if [ -n "$BITMIXER_CODE" ]; then
+		REQ_URL+="bitcode=$BITMIXER_CODE&"
+	fi
+	
+	FEE=`get_random_fee`
+	REQ_URL+="fee=$FEE"
+	
+	echo -e "\nFEE: \e[1;33m$FEE\e[0m\n"
+	read -p "Does it seems ok to you (y/N)? " check
+	if [ "$check" != "y" -a "$check" != "yes" ]; then
+		exit 0
+	fi
+}
+
+function send_request() {
+	echo
+	echo "Sending the request to the server..."
+	COOKIE_FILE="/tmp/.bitmixer.io-$RANDOM"
+	SERVER_RESPONSE=`curl -s --cookie-jar "$COOKIE_FILE" "$REQ_URL"`
+	if [[ $SERVER_RESPONSE =~ $RESPONSE_REGEX ]]; then
+		address=${BASH_REMATCH[1]}
+		max_amount=${BASH_REMATCH[2]}
+		bitmixer=${BASH_REMATCH[4]}
+		
+		echo -e \
+"Successful response from the bitmixer.io server.
+
+ADDRESS: \e[1;31m$address\e[0m
+MAX_AMOUNT: \e[1;32m$max_amount\e[0m (bitcoins)"
+		
+		if [ -z "$BITMIXER_CODE" ]; then
+			echo -e "BITCODE: \e[1;34m$bitmixer\e[0m"
+		fi 
+		
+		LETTER_URL+="addr=$address"
+	else
+		echo "ERROR: $SERVER_RESPONSE"
+		exit 1
+	fi
+	
+}
+
+function download_letter() {
+	echo
+	read -p "Do you want to download the 'Letter of Guarantee' (y/N)? " check
+	if [ "$check" == "N" -o "$check" == "n" ]; then
+		exit 0
+	fi
+	
+	LETTER_RAND=$RANDOM
+	curl -s --cookie "$COOKIE_FILE" "$LETTER_URL" > Letter_Of_Guarantee-$LETTER_RAND.txt
+	
+	shred -ufz "$COOKIE_FILE" 2> /dev/null
+	
+	echo -e "Saved as 'Letter_Of_Guarantee-\e[1;31m$LETTER_RAND\e[0m.txt'"
+}
+
+function main() {
+	check_args $@
+
+	generate_req_url $@
+	
+	send_request
+	
+	download_letter
+	
+	exit 0
+}
+
+main $@
