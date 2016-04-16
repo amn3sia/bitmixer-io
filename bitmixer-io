@@ -49,9 +49,9 @@ Usage: bitmixer-io address1 [address2 address3 ... address 10]"
 
 function curl() {
 	if [ -z "$SOCKS5_PROXY" ]; then
-		/usr/bin/curl $@
+		command curl $@
 	else
-		/usr/bin/curl --socks5 $SOCKS5_PROXY $@
+		command curl --socks5 $SOCKS5_PROXY $@
 	fi
 }
 
